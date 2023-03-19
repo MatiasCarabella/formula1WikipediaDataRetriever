@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 def clean_driver_name(driver):
     # Remove text between square brackets
     driver = re.sub(r'\[.*?\]', '', driver)
+    driver = re.sub(r"\(.*\)", "", driver)
 
     # Replace certain Unicode characters with their ASCII equivalents
     driver = unicodedata.normalize('NFKD', driver).encode('ASCII', 'ignore').decode('ASCII')
@@ -38,26 +39,28 @@ def clean_constructor_name(constructor):
 ### CONSTANTS ### 
 # You'll probably have to modify some of these depending on the YEAR you are querying
 
-YEAR = 1990 # Year from which to retrieve data
+YEAR = 1965 # Year from which to retrieve data
 
 ENTRIES_TABLE_INDEX = 1 # USUALLY '0' OR '1'
-RESULTS_TABLE_INDEX = 5 # USUALLY '4', '5', OR '6'
+RESULTS_TABLE_INDEX = 2 # USUALLY '4', '5', OR '6'
 # When running the script, a 'tables.html' file is generated. If one of them (or both) are not the right ones, then modify these.
 
-ENTRIES_START_FROM_INDEX = 1 # USUALLY '1'
-RESULTS_START_FROM_INDEX = 2 # USUALLY '1' OR '2'
+ENTRIES_START_FROM_INDEX = 1 # USUALLY '1' OR '2'
+RESULTS_START_FROM_INDEX = 1 # USUALLY '1' OR '2'
 # These are for ignoring the header rows, the number should match the first row with actual data.
 
-SPECIAL_FORMAT = YEAR in [2015, 2017, 2018, 2019, 2020, 2021, 2022]
+SPECIAL_FORMAT = YEAR in [2015, 2017, 2018, 2019, 2020, 2021, 2022, 2023]
 # Sometimes there's NO headers in the Entries table, this boolean takes that into account.
 
-ENTRIES_DRIVER_MAIN_INDEX = 5 # USUALLY EITHER '4' OR '5'
+ENTRIES_DRIVER_MAIN_INDEX = 4 # USUALLY EITHER '4' OR '5'
 ENTRIES_DRIVER_SECONDARY_INDEX = 0 # USUALLY EITHER '0' OR '1'
 # The column index in which the Driver name is present. Given that the Constructor spans multiple Drivers (but only counts as a column in its first row),
 # the first driver from a given team is always a higher index than the rest.
 
+ARTICLE_NAME ='Formula_One_World_Championship' if  YEAR >= 1981 else 'Formula_One_season' 
+
 # Define the URL of the Wikipedia page to retrieve data from
-url = 'https://en.wikipedia.org/wiki/' + str(YEAR) + '_Formula_One_World_Championship'
+url = 'https://en.wikipedia.org/wiki/' + str(YEAR) + '_' + ARTICLE_NAME
 
 # Send an HTTP request to the webpage and retrieve the HTML content
 response = requests.get(url)
@@ -102,7 +105,7 @@ for row in rows:
     # If the Constructor column is not empty, update the latest_constructor value
     if (cols_th):
         constructor = clean_constructor_name(cols_th[0])
-        if (constructor == 'Sources:'):
+        if (constructor.startswith("Source")):
             break
         latest_constructor = constructor
         if (cols_td):
@@ -111,7 +114,7 @@ for row in rows:
             drivers = cols_td[ENTRIES_DRIVER_MAIN_INDEX] # USUALLY EITHER '4' OR '5'
     else:
         if SPECIAL_FORMAT:
-            if (clean_constructor_name(cols_td[0]) == 'Sources:'):
+            if (clean_constructor_name(cols_td[0]).startswith("Source")):
                 break
             constructor = clean_constructor_name(cols_td[1])
             drivers = cols_td[5]
@@ -133,7 +136,7 @@ for row in rows:
 with open('entry_output.json', 'w') as f:
     json.dump(data, f, indent=4)
 
-### FINAL STANDINGS TABLE ###
+### RESULTS TABLE ###
 
 # Extract the rows from the final standings table (skipping the first two rows which contain the headers)
 rows = table_results.find_all('tr')[RESULTS_START_FROM_INDEX:] # USUALLY '1' OR '2'
@@ -155,7 +158,9 @@ for row in rows:
 
     # Extract the Championship Position, Points and Driver columns. If Championship Position equals 'Pos.' then that's the end of the table so we end the loop
     championship_position = cols_th[0].get_text(strip=True)
-    if championship_position == 'Pos.':
+    if championship_position.startswith("Pos") or championship_position.startswith("Driver"):
+        continue
+    if championship_position == "Key":
         break
 
     # SOMETIMES INDEX '1' DOESN'T EXIST, AND POINTS ARE PRESENT IN THE FINAL <td>
